@@ -78,7 +78,7 @@ local function render_keys()
     and string.format("%s  %s:%s/db%s", c.name, c.host, c.port, c.db)
     or  "(no connection)"
   winbar(state.keys_win, string.format(
-    " redis-nvim  │  %s  │  %s  │  %d keys  │  [f]filter  [R]reload  [e]panel",
+    " %s  │  %s  │  %d keys",
     conn_label, state.pattern, #state.keys
   ))
 end
@@ -110,7 +110,7 @@ local function render_viewer(key, key_type, ttl, lines)
   set_lines(state.viewer_buf, display)
   vim.bo[state.viewer_buf].modified = false
   winbar(state.viewer_win, string.format(
-    " %s  │  %s  │  ttl: %s  │  [e]edit  [q]close",
+    " %s  │  %s  │  ttl: %s",
     key, key_type, ttl_str
   ))
 end
@@ -122,19 +122,33 @@ local function load_keys()
     vim.notify("[redis-nvim] no connection — press <leader>e then 'a' to add one", vim.log.levels.WARN)
     return
   end
-  redis.scan(state.conn, state.cursor, state.pattern, config.options.page_size,
-    function(err, next_cursor, keys)
-      vim.schedule(function()
-        if err then
-          vim.notify("[redis-nvim] " .. err, vim.log.levels.ERROR)
-          return
-        end
-        vim.list_extend(state.keys, keys)
-        state.cursor   = next_cursor
-        state.has_more = next_cursor ~= "0"
-        render_keys()
+
+  -- SCAN with a specific pattern may return 0 results per iteration even when
+  -- matches exist (Redis scans a fixed number of slots, not keys). Keep going
+  -- until we collect at least one new result or the cursor wraps back to 0.
+  local function do_scan(cursor)
+    redis.scan(state.conn, cursor, state.pattern, config.options.page_size,
+      function(err, next_cursor, keys)
+        vim.schedule(function()
+          if err then
+            vim.notify("[redis-nvim] " .. err, vim.log.levels.ERROR)
+            return
+          end
+          vim.list_extend(state.keys, keys)
+          state.cursor   = next_cursor
+          state.has_more = next_cursor ~= "0"
+
+          if #keys == 0 and state.has_more then
+            -- No matches yet but more slots to scan — continue without rendering
+            do_scan(next_cursor)
+          else
+            render_keys()
+          end
+        end)
       end)
-    end)
+  end
+
+  do_scan(state.cursor)
 end
 
 -- Exposed so reload() can call it via require (avoids forward-ref issue)
