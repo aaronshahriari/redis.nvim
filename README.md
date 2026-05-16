@@ -1,204 +1,141 @@
-# oil-redis.nvim
+# redis.nvim
 
-Browse and edit Redis keys inside [oil.nvim](https://github.com/stevearc/oil.nvim) — your keyspace as a file system.
-
-Key namespaces (conventional `:` separators) become directories; leaf keys become editable files. All five Redis value types are supported for both reading and writing.
+A native Neovim Redis browser. Browse keys, filter by pattern, and view/edit values — all without leaving your editor.
 
 ```
-oil-redis://localhost:6379/0/        ← db 0 root
-  user:                              ← namespace  (directory)
-    123                              ← string key (file)
-    456
-    123:                             ← sub-namespace
-      profile                        ← hash key
-      sessions                       ← list key
-  session:
-    abc123                           ← string key
+┌─ keys ──────────────────────────────────────────┐  ┌─ viewer ─────────────────────────────────────┐
+│  redis-nvim │ local 6379/db0 │ rjbank_kb_v1:* │  │  rjbank_kb_v1:abc123 │ string │ ttl: 3600   │
+│  [f]filter  [R]reload  [c]conn  [a]add          │  │  [e]edit  [q]close                           │
+├─────────────────────────────────────────────────┤  ├──────────────────────────────────────────────┤
+│  rjbank_kb_v1:abc123                            │  │  {                                           │
+│  rjbank_kb_v1:def456                            │  │    "user": "aaron",                          │
+│  rjbank_kb_v1:ghi789                            │  │    "score": 99                               │
+│  ── load more ──                                │  │  }                                           │
+└─────────────────────────────────────────────────┘  └──────────────────────────────────────────────┘
 ```
-
----
 
 ## Requirements
 
-| Dependency | Version |
-|---|---|
-| Neovim | ≥ 0.10 |
-| [oil.nvim](https://github.com/stevearc/oil.nvim) | any recent |
-| `redis-cli` | on `$PATH` |
-
----
+- Neovim ≥ 0.10
+- `redis-cli` on `$PATH`
+- `jq` on `$PATH` _(optional — used for JSON pretty-printing)_
 
 ## Installation
 
-### vim.pack.add (Neovim built-in, ≥ 0.11)
-
+**vim.pack.add** (Neovim ≥ 0.11)
 ```lua
-vim.pack.add("aaronshahriari/oil-redis")
+vim.pack.add("aaronshahriari/redis.nvim")
 ```
 
-Then register the adapter in your oil setup (see [Configuration](#configuration)).
-
-### lazy.nvim
-
+**lazy.nvim**
 ```lua
-{
-  "aaronshahriari/oil-redis",
-  dependencies = { "stevearc/oil.nvim" },
-}
+{ "aaronshahriari/redis.nvim" }
 ```
 
-### rocks.nvim / other managers
-
-The plugin has no build step and no external Lua dependencies — any package
-manager that clones the repo will work.
-
----
-
-## Configuration
-
-Add the adapter to your existing oil.nvim setup:
-
+Then call setup somewhere in your config (required, even with no options):
 ```lua
-require("oil").setup({
-  adapters = {
-    ["oil-redis://"] = "redis",
-  },
-  -- rest of your oil config ...
-})
+require("redis-nvim").setup()
 ```
-
-Oil resolves adapters by requiring `oil.adapters.<name>`, so the value is the
-string `"redis"` — the plugin exposes itself at that path automatically.
-
-That's it. No other configuration is required.
-
----
 
 ## Usage
 
-### Opening a connection
+### Open the browser
 
 ```vim
-:e oil-redis://localhost:6379/0/
+:Redis
+:Redis myconn        " open and switch to a named connection
 ```
 
-Or from Lua:
-
+Or bind it:
 ```lua
-require("oil").open("oil-redis://localhost:6379/0/")
+vim.keymap.set("n", "<leader>rd", "<cmd>Redis<cr>")
 ```
 
-Bind it to a key:
+### First run — add a connection
 
-```lua
-vim.keymap.set("n", "<leader>rr", function()
-  require("oil").open("oil-redis://localhost:6379/0/")
-end)
+Press `a` in the keys pane and follow the prompts:
+
+```
+Name:     local
+Host:     localhost
+Port:     6379
+DB:       0
+Password: (blank for none)
 ```
 
-### Navigation
+Connections are saved to `~/.local/share/nvim/redis-nvim/connections.json`.
 
-oil-redis uses the exact same keybindings as oil.nvim — there is nothing new
-to learn:
+### Key browser
 
 | Key | Action |
-|---|---|
-| `Enter` | enter namespace / open key value |
-| `-` | go up to parent namespace |
-| `d` | mark for deletion (`DEL`) |
-| `r` | rename / move (`RENAME`) |
-| `yy` | copy (`COPY`) |
-| `:w` | commit pending actions |
-| `g?` | show all oil keybindings |
+|-----|--------|
+| `<CR>` | Open key value in viewer / trigger load-more |
+| `f` | Set filter pattern (glob, e.g. `user:*`) |
+| `R` | Reload from scratch |
+| `c` | Pick a different connection |
+| `a` | Add a new connection |
+| `dd` | Delete key under cursor |
 
-### Editing values
+### Value viewer
 
-Press `Enter` on any leaf key to open its value in a normal Neovim buffer.
-Edit freely, then `:w` to write back to Redis.
+| Key | Action |
+|-----|--------|
+| `e` | Enter edit mode |
+| `:w` | Save edits back to Redis |
+| `u` | Undo edits |
+| `q` | Close viewer |
 
-Each Redis type is displayed in a human-readable format:
+JSON string values are auto pretty-printed if `jq` is available.
 
-| Type | Display format | Edit rules |
-|---|---|---|
-| **string** | raw value, one line per `\n` in value | edit freely |
-| **hash** | `field: value` per line | add/remove/edit `field: value` lines |
-| **list** | one element per line, in order | reorder or add/remove lines |
-| **set** | one member per line | add/remove lines |
-| **zset** | `member score` per line | edit member or score |
+### Value formats by type
 
-### Creating keys
+| Redis type | Format shown in viewer |
+|------------|------------------------|
+| string | raw value (JSON pretty-printed if valid) |
+| hash | `field: value` per line |
+| list | one element per line |
+| set | one member per line |
+| zset | `member score` per line |
 
-`o` (new file) creates a key with an empty string value.
-`O` (new directory) is a no-op — Redis has no empty namespaces; a namespace
-appears automatically once a key is created inside it.
+Edit in these formats and `:w` — the plugin writes back using the correct Redis command.
 
-### Multiple servers / databases
-
-Every URL is independent — open as many as you like simultaneously:
-
-```vim
-:e oil-redis://prod.internal:6379/0/
-:e oil-redis://localhost:6380/1/user:
-```
-
----
-
-## Authentication
-
-### Embed credentials in the URL
+## Auth
 
 ```vim
-" Password only (classic Redis AUTH)
-:e oil-redis://:mysecret@localhost:6379/0/
-
-" Username + password (Redis ≥ 6 ACL)
-:e oil-redis://alice:mysecret@localhost:6379/0/
+:Redis              " prompts via 'a' → add connection with password field
 ```
 
-### Environment variable (recommended for sensitive environments)
+Passwords are stored in the connections JSON file (`chmod 600` recommended).
+Alternatively set `REDISCLI_AUTH` in your environment before starting Neovim.
 
-```sh
-REDISCLI_AUTH=mysecret nvim
+## Configuration
+
+```lua
+require("redis-nvim").setup({
+  page_size     = 200,   -- keys per SCAN batch
+  key_win_width = 55,    -- width of the key browser pane
+  keymaps = {
+    select    = "<CR>",
+    filter    = "f",
+    reload    = "R",
+    delete    = "dd",
+    conn_pick = "c",
+    conn_add  = "a",
+    edit      = "e",
+    close     = "q",
+  },
+})
 ```
-
-The adapter always passes `--no-auth-warning` to `redis-cli`, so no warning
-leaks into the UI either way.
-
-> **Security note:** passwords embedded in URLs appear in `:ls`, `:buffers`,
-> and Neovim's buffer list. Prefer the environment variable for production
-> credentials.
-
----
 
 ## How it works
 
-The adapter is a thin shim between oil.nvim's adapter interface and
-`redis-cli`. It spawns `redis-cli --raw` subprocesses asynchronously using
-`vim.fn.jobstart` and translates between oil's directory/file model and
-Redis's flat keyspace:
-
-- **Listing** (`SCAN` + cursor loop) — iterates the full cursor cycle so all
-  keys are collected, even on large keyspaces.
-- **Navigation** — the first `:` after the current prefix determines the next
-  directory boundary. Keys and namespaces that share the same prefix
-  (e.g., `user:123` and `user:123:sessions`) treat the namespace as the
-  directory entry.
-- **Writes** — type-aware: `SET` for strings, `DEL`+`HSET` for hashes,
-  `DEL`+`RPUSH` for lists, `DEL`+`SADD` for sets, `DEL`+`ZADD` for sorted
-  sets.
-- **Copy** — uses `COPY` (Redis ≥ 6.2) with a `DUMP`/`RESTORE` fallback for
-  older servers.
-- **Delete namespace** — `SCAN prefix* + DEL` (not atomic; avoid on extremely
-  hot keyspaces).
-
----
+- Keys are loaded via Redis `SCAN` in batches (`page_size` per page). Press `<CR>` on `── load more ──` to fetch the next batch.
+- Viewing a key fetches `TYPE` and `TTL` concurrently, then fetches the value with the type-appropriate command (`GET`, `HGETALL`, `LRANGE`, `SMEMBERS`, `ZRANGE WITHSCORES`).
+- Editing writes back with `SET` / `DEL`+`HSET` / `DEL`+`RPUSH` / `DEL`+`SADD` / `DEL`+`ZADD` depending on type.
+- All Redis I/O is async via `vim.fn.jobstart`.
 
 ## Limitations
 
-- Key values that contain literal newlines display incorrectly in hash, list,
-  set, and sorted-set views. String values with embedded newlines are fine.
-- Namespace deletion is not atomic (`SCAN` + bulk `DEL`).
-- `COPY` fallback via `DUMP`/`RESTORE` does not preserve TTL.
-- Redis Cluster is not supported.
-- Sorted-set member names cannot contain spaces (they are parsed on whitespace
-  to split member from score).
+- Hash/list/set/zset values containing newlines will not parse correctly on write-back.
+- No cluster support.
+- Sorted-set member names cannot contain spaces.
