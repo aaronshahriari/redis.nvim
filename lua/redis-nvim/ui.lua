@@ -13,6 +13,7 @@ local state = {
   cursor    = "0",
   keys      = {},
   has_more  = false,
+  loading   = false,   -- guard against concurrent scans
 
   keys_buf   = -1,
   keys_win   = -1,
@@ -86,8 +87,7 @@ local function reload()
   state.cursor   = "0"
   state.keys     = {}
   state.has_more = false
-  -- load_keys is defined below; forward-declared via upvalue trick
-  -- (called only at runtime, so forward reference is fine)
+  state.loading  = false   -- reset so the new load is allowed
   require("redis-nvim.ui")._load_keys()
 end
 
@@ -159,6 +159,8 @@ local function load_keys()
     vim.notify("[redis-nvim] no connection — press <leader>e then 'a' to add one", vim.log.levels.WARN)
     return
   end
+  if state.loading then return end
+  state.loading = true
 
   spinner_start()
 
@@ -171,6 +173,7 @@ local function load_keys()
         vim.schedule(function()
           if err then
             spinner_stop()
+            state.loading = false
             vim.notify("[redis-nvim] " .. err, vim.log.levels.ERROR)
             return
           end
@@ -182,6 +185,7 @@ local function load_keys()
             -- No matches yet but more slots to scan — continue without rendering
             do_scan(next_cursor)
           else
+            state.loading = false
             render_keys()
           end
         end)
