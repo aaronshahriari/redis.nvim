@@ -12,6 +12,7 @@ local state = {
   pattern   = "*",
   cursor    = "0",
   keys      = {},
+  seen_keys = {},      -- dedup set: key -> true
   has_more  = false,
   loading   = false,   -- guard against concurrent scans
 
@@ -85,10 +86,11 @@ local function set_conn(conn)
 end
 
 local function reload()
-  state.cursor   = "0"
-  state.keys     = {}
-  state.has_more = false
-  state.loading  = false   -- reset so the new load is allowed
+  state.cursor    = "0"
+  state.keys      = {}
+  state.seen_keys = {}
+  state.has_more  = false
+  state.loading   = false
   require("redis-nvim.ui")._load_keys()
 end
 
@@ -178,7 +180,12 @@ local function load_keys()
             vim.notify("[redis-nvim] " .. err, vim.log.levels.ERROR)
             return
           end
-          vim.list_extend(state.keys, keys)
+          for _, k in ipairs(keys) do
+            if not state.seen_keys[k] then
+              state.seen_keys[k] = true
+              table.insert(state.keys, k)
+            end
+          end
           state.cursor   = next_cursor
           state.has_more = next_cursor ~= "0"
 
