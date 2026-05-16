@@ -200,31 +200,22 @@ local function pick_connection()
 end
 
 local function add_connection()
-  local fields = {}
-  local prompts = {
-    { key = "name",     prompt = "Name: ",              default = "local"      },
-    { key = "host",     prompt = "Host: ",              default = "localhost"  },
-    { key = "port",     prompt = "Port: ",              default = "6379"       },
-    { key = "db",       prompt = "DB: ",                default = "0"          },
-    { key = "password", prompt = "Password (or blank): ", default = ""         },
-  }
-
-  local function ask(i)
-    if i > #prompts then
-      local conn = conns.add(fields)
+  vim.ui.input({ prompt = "URI (redis://[user:pass@]host[:port][/db]): " }, function(url)
+    if not url or url == "" then return end
+    local parsed = conns.parse_url(url)
+    if not parsed then
+      vim.notify("[redis-nvim] invalid URI — expected redis://[user:pass@]host[:port][/db]", vim.log.levels.ERROR)
+      return
+    end
+    vim.ui.input({ prompt = "Name: ", default = parsed.host }, function(name)
+      if not name or name == "" then return end
+      parsed.name = name
+      local conn = conns.add(parsed)
       vim.notify("[redis-nvim] added: " .. conn.name, vim.log.levels.INFO)
       state.conn = conn
       reload()
-      return
-    end
-    local p = prompts[i]
-    vim.ui.input({ prompt = p.prompt, default = p.default }, function(val)
-      if val == nil then return end  -- cancelled
-      fields[p.key] = val
-      ask(i + 1)
     end)
-  end
-  ask(1)
+  end)
 end
 
 -- ── buffer / window setup ─────────────────────────────────────────────────────
