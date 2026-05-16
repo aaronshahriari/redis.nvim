@@ -45,6 +45,7 @@ end
 
 -- List a Redis namespace. Directories are first-level prefix segments (ending
 -- in ":"); files are leaf keys with no further ":" after the current prefix.
+-- Uses oil's fetch_more pagination so the first SCAN batch appears immediately.
 M.list = function(url, _column_defs, cb)
   local parsed = url_mod.parse(url)
   if not parsed then
@@ -57,50 +58,60 @@ M.list = function(url, _column_defs, cb)
 
   local conn = conn_from(parsed)
   local pattern = parsed.prefix == "" and "*" or (parsed.prefix .. "*")
+  local prefix_len = #parsed.prefix
 
-  redis.scan_all(conn, pattern, function(err, keys)
-    if err then return cb(err) end
+  -- Track across all batches so we never emit the same entry twice and so
+  -- directories always win over files with the same base name.
+  local seen = {}  -- entry name -> "directory" | "file"
 
-    local dirs = {}   -- name (including trailing ":") -> true
-    local files = {}  -- name -> true
+  local function process_batch(cursor, batch_cb)
+    redis.run(conn, { "SCAN", cursor, "MATCH", pattern, "COUNT", "200" }, function(err, lines)
+      if err then return batch_cb(err) end
 
-    for _, key in ipairs(keys) do
-      local rest = key:sub(#parsed.prefix + 1)
-      if rest == "" then goto continue end
+      local next_cursor = lines[1] or "0"
+      local entries = {}
 
-      local colon = rest:find(":")
-      if colon then
-        dirs[rest:sub(1, colon)] = true  -- e.g. "user:" or "123:"
-      else
-        files[rest] = true
+      for i = 2, #lines do
+        local key = lines[i]
+        if key == "" then goto continue end
+
+        local rest = key:sub(prefix_len + 1)
+        if rest == "" then goto continue end
+
+        local colon = rest:find(":")
+        if colon then
+          local name = rest:sub(1, colon)   -- e.g. "rjbank_kb_v1:"
+          if not seen[name] then
+            seen[name] = "directory"
+            -- Prevent the bare name from being emitted as a file later
+            seen[name:sub(1, -2)] = "skip"
+            table.insert(entries, { [FIELD_NAME] = name, [FIELD_TYPE] = "directory" })
+          end
+        else
+          if not seen[rest] then
+            seen[rest] = "file"
+            table.insert(entries, { [FIELD_NAME] = rest, [FIELD_TYPE] = "file" })
+          end
+        end
+
+        ::continue::
       end
 
-      ::continue::
-    end
+      table.sort(entries, function(a, b)
+        if a[FIELD_TYPE] ~= b[FIELD_TYPE] then return a[FIELD_TYPE] == "directory" end
+        return a[FIELD_NAME] < b[FIELD_NAME]
+      end)
 
-    local entries = {}
-
-    for name in pairs(dirs) do
-      table.insert(entries, { [FIELD_NAME] = name, [FIELD_TYPE] = "directory" })
-    end
-
-    for name in pairs(files) do
-      -- If there is also a directory with this name as a sub-prefix, the
-      -- directory takes precedence and the leaf key is only accessible inside.
-      if not dirs[name .. ":"] then
-        table.insert(entries, { [FIELD_NAME] = name, [FIELD_TYPE] = "file" })
+      local fetch_more
+      if next_cursor ~= "0" then
+        fetch_more = function(more_cb) process_batch(next_cursor, more_cb) end
       end
-    end
 
-    table.sort(entries, function(a, b)
-      if a[FIELD_TYPE] ~= b[FIELD_TYPE] then
-        return a[FIELD_TYPE] == "directory"
-      end
-      return a[FIELD_NAME] < b[FIELD_NAME]
+      batch_cb(nil, entries, fetch_more)
     end)
+  end
 
-    cb(nil, entries)
-  end)
+  process_batch("0", cb)
 end
 
 -- Called by oil when opening a file buffer whose name is an oil-redis:// URL.
