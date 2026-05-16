@@ -126,14 +126,9 @@ function M.open(active_conn, on_select, on_add, on_delete, on_edit)
 
   M.render(active_conn)
 
-  -- Start cursor on first real connection (line 3)
+  -- Place cursor on first real connection (line 3) and stay here
   local first = math.min(3, vim.api.nvim_buf_line_count(state.buf))
   vim.api.nvim_win_set_cursor(state.win, { first, 0 })
-
-  -- Return focus to where the user was
-  if vim.api.nvim_win_is_valid(state.prev_win) then
-    vim.api.nvim_set_current_win(state.prev_win)
-  end
 end
 
 function M.close()
