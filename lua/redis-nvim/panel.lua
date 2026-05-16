@@ -37,10 +37,6 @@ function M.render(active_conn)
     end
   end
 
-  table.insert(lines, "")
-  table.insert(lines, "  <CR> connect   a add")
-  table.insert(lines, "  D    delete   cw edit")
-
   state.line_map = lmap
 
   vim.bo[state.buf].modifiable = true
