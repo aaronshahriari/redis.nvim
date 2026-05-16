@@ -28,6 +28,40 @@ local state = {
 local LOAD_MORE_LINE = "  ── load more ──"
 local EMPTY_LINE     = "  (no keys)"
 
+local uv = vim.uv or vim.loop
+
+-- ── spinner ───────────────────────────────────────────────────────────────────
+
+local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+
+local spinner = { timer = nil, idx = 1 }
+
+local function spinner_winbar_text(frame)
+  local c = state.conn
+  local conn_label = c
+    and string.format("%s  %s:%s/db%s", c.name, c.host, c.port, c.db)
+    or  "(no connection)"
+  return string.format(" %s  │  %s  │  %s", conn_label, state.pattern, frame)
+end
+
+local function spinner_start()
+  if spinner.timer then return end
+  spinner.idx = 1
+  spinner.timer = uv.new_timer()
+  spinner.timer:start(0, 80, vim.schedule_wrap(function()
+    if not spinner.timer then return end
+    spinner.idx = (spinner.idx % #SPINNER_FRAMES) + 1
+    winbar(state.keys_win, spinner_winbar_text(SPINNER_FRAMES[spinner.idx]))
+  end))
+end
+
+local function spinner_stop()
+  if not spinner.timer then return end
+  spinner.timer:stop()
+  spinner.timer:close()
+  spinner.timer = nil
+end
+
 local function buf_valid(b) return b ~= -1 and vim.api.nvim_buf_is_valid(b) end
 local function win_valid(w) return w ~= -1 and vim.api.nvim_win_is_valid(w) end
 
@@ -73,6 +107,8 @@ local function render_keys()
   if state.has_more then table.insert(lines, LOAD_MORE_LINE) end
   set_lines(state.keys_buf, lines)
 
+  spinner_stop()
+
   local c = state.conn
   local conn_label = c
     and string.format("%s  %s:%s/db%s", c.name, c.host, c.port, c.db)
@@ -88,22 +124,23 @@ local function render_viewer(key, key_type, ttl, lines)
 
   local display = lines
 
-  if key_type == "string" and #lines > 0 then
-    local raw   = table.concat(lines, "\n")
-    local first = vim.trim(raw):sub(1, 1)
-    if first == "{" or first == "[" then
-      if vim.fn.executable("jq") == 1 then
-        local pretty = vim.fn.system("jq .", raw)
-        if vim.v.shell_error == 0 then
-          display = vim.split(vim.trim(pretty), "\n")
-        end
+  local is_json = key_type == "ReJSON-RL"
+    or (key_type == "string" and #lines > 0
+        and vim.trim(table.concat(lines, "\n")):sub(1, 1):match("[%[{]"))
+
+  if is_json and #lines > 0 then
+    local raw = table.concat(lines, "\n")
+    if vim.fn.executable("jq") == 1 then
+      local pretty = vim.fn.system("jq .", raw)
+      if vim.v.shell_error == 0 then
+        display = vim.split(vim.trim(pretty), "\n")
       end
-      vim.schedule(function()
-        if buf_valid(state.viewer_buf) then
-          vim.bo[state.viewer_buf].filetype = "json"
-        end
-      end)
     end
+    vim.schedule(function()
+      if buf_valid(state.viewer_buf) then
+        vim.bo[state.viewer_buf].filetype = "json"
+      end
+    end)
   end
 
   local ttl_str = (ttl == "-1" or ttl == nil) and "no expiry" or (ttl .. "s")
@@ -123,6 +160,8 @@ local function load_keys()
     return
   end
 
+  spinner_start()
+
   -- SCAN with a specific pattern may return 0 results per iteration even when
   -- matches exist (Redis scans a fixed number of slots, not keys). Keep going
   -- until we collect at least one new result or the cursor wraps back to 0.
@@ -131,6 +170,7 @@ local function load_keys()
       function(err, next_cursor, keys)
         vim.schedule(function()
           if err then
+            spinner_stop()
             vim.notify("[redis-nvim] " .. err, vim.log.levels.ERROR)
             return
           end

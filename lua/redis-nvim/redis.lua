@@ -91,6 +91,9 @@ function M.get_value(conn, key, key_type, cb)
       cb(nil, out)
     end)
 
+  elseif key_type == "ReJSON-RL" then
+    M.run(conn, { "JSON.GET", key }, function(err, lines) cb(err, lines or {}) end)
+
   else
     cb(nil, { "(unsupported type: " .. tostring(key_type) .. ")" })
   end
@@ -147,6 +150,9 @@ function M.set_value(conn, key, lines, key_type, cb)
       if err or #args == 2 then return cb(err) end
       M.run(conn, args, function(e) cb(e) end)
     end)
+
+  elseif key_type == "ReJSON-RL" then
+    M.run(conn, { "JSON.SET", key, "$", table.concat(lines, "\n") }, function(err) cb(err) end)
 
   else
     cb("cannot write type: " .. tostring(key_type))
