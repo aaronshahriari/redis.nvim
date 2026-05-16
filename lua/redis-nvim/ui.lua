@@ -73,7 +73,8 @@ local function set_lines(buf, lines)
 end
 
 local function winbar(win, text)
-  if win_valid(win) then vim.wo[win].winbar = text end
+  if not win_valid(win) then return end
+  pcall(vim.api.nvim_set_option_value, "winbar", text, { win = win })
 end
 
 -- ── connection helpers ────────────────────────────────────────────────────────
