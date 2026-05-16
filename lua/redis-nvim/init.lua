@@ -1,16 +1,7 @@
 local M = {}
 
 function M.setup(opts)
-  local cfg = require("redis-nvim.config")
-  cfg.setup(opts)
-
-  -- Global panel toggle keymap
-  local toggle_key = cfg.options.keymaps.panel_toggle
-  if toggle_key and toggle_key ~= "" then
-    vim.keymap.set("n", toggle_key, function()
-      require("redis-nvim.ui").toggle_panel()
-    end, { noremap = true, silent = true, desc = "redis-nvim: toggle connection panel" })
-  end
+  require("redis-nvim.config").setup(opts)
 end
 
 -- :Redis [name]  — open the browser, optionally switching to a named connection

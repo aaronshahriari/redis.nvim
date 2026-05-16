@@ -98,6 +98,11 @@ local function setup_buf(on_select, on_add, on_delete, on_edit)
 
   map("q", M.close)
 
+  local toggle_key = require("redis-nvim.config").options.keymaps.panel_toggle
+  if toggle_key and toggle_key ~= "" then
+    map(toggle_key, M.close)
+  end
+
   return buf
 end
 

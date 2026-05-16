@@ -258,6 +258,10 @@ local function setup_keys_buf()
     vim.keymap.set("n", key, fn, { buffer = buf, noremap = true, silent = true })
   end
 
+  if km.panel_toggle and km.panel_toggle ~= "" then
+    map(km.panel_toggle, function() M.toggle_panel() end)
+  end
+
   map(km.select, function()
     local key, is_more = key_at_cursor()
     if is_more   then load_keys()
@@ -324,6 +328,11 @@ local function setup_viewer_buf()
   vim.api.nvim_buf_set_name(buf, "redis-nvim://viewer")
 
   local km = config.options.keymaps
+
+  if km.panel_toggle and km.panel_toggle ~= "" then
+    vim.keymap.set("n", km.panel_toggle, function() M.toggle_panel() end,
+      { buffer = buf, noremap = true, silent = true })
+  end
 
   vim.keymap.set("n", km.edit, function()
     vim.bo[buf].modifiable = true
