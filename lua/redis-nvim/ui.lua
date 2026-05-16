@@ -32,6 +32,22 @@ local EMPTY_LINE     = "  (no keys)"
 
 local uv = vim.uv or vim.loop
 
+-- ── helpers ───────────────────────────────────────────────────────────────────
+
+local function buf_valid(b) return b ~= -1 and vim.api.nvim_buf_is_valid(b) end
+local function win_valid(w) return w ~= -1 and vim.api.nvim_win_is_valid(w) end
+
+local function set_lines(buf, lines)
+  vim.bo[buf].modifiable = true
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
+end
+
+local function winbar(win, text)
+  if not win_valid(win) then return end
+  pcall(vim.api.nvim_set_option_value, "winbar", text, { win = win })
+end
+
 -- ── spinner ───────────────────────────────────────────────────────────────────
 
 local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
@@ -62,20 +78,6 @@ local function spinner_stop()
   spinner.timer:stop()
   spinner.timer:close()
   spinner.timer = nil
-end
-
-local function buf_valid(b) return b ~= -1 and vim.api.nvim_buf_is_valid(b) end
-local function win_valid(w) return w ~= -1 and vim.api.nvim_win_is_valid(w) end
-
-local function set_lines(buf, lines)
-  vim.bo[buf].modifiable = true
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.bo[buf].modifiable = false
-end
-
-local function winbar(win, text)
-  if not win_valid(win) then return end
-  pcall(vim.api.nvim_set_option_value, "winbar", text, { win = win })
 end
 
 -- ── connection helpers ────────────────────────────────────────────────────────
