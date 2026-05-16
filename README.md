@@ -61,11 +61,14 @@ Add the adapter to your existing oil.nvim setup:
 ```lua
 require("oil").setup({
   adapters = {
-    ["oil-redis"] = require("oil-redis"),
+    ["oil-redis://"] = "redis",
   },
   -- rest of your oil config ...
 })
 ```
+
+Oil resolves adapters by requiring `oil.adapters.<name>`, so the value is the
+string `"redis"` — the plugin exposes itself at that path automatically.
 
 That's it. No other configuration is required.
 
