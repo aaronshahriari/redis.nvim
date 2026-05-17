@@ -54,12 +54,13 @@ local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧",
 
 local spinner = { timer = nil, idx = 1 }
 
-local function spinner_winbar_text(frame)
+local function conn_label()
   local c = state.conn
-  local conn_label = c
-    and string.format("%s  %s:%s/db%s", c.name, c.host, c.port, c.db)
-    or  "(no connection)"
-  return string.format(" %s  │  %s  │  %s", conn_label, state.pattern, frame)
+  return c and c.name or "(no connection)"
+end
+
+local function spinner_winbar_text(frame)
+  return string.format(" %s · %s · %s", conn_label(), state.pattern, frame)
 end
 
 local function spinner_start()
@@ -85,6 +86,7 @@ end
 local function set_conn(conn)
   state.conn = conn
   panel.render(state.conn)
+  winbar(state.keys_win, string.format(" %s · %s · %d keys", conn_label(), state.pattern, #state.keys))
 end
 
 local function reload()
@@ -113,15 +115,7 @@ local function render_keys()
   set_lines(state.keys_buf, lines)
 
   spinner_stop()
-
-  local c = state.conn
-  local conn_label = c
-    and string.format("%s  %s:%s/db%s", c.name, c.host, c.port, c.db)
-    or  "(no connection)"
-  winbar(state.keys_win, string.format(
-    " %s  │  %s  │  %d keys",
-    conn_label, state.pattern, #state.keys
-  ))
+  winbar(state.keys_win, string.format(" %s · %s · %d keys", conn_label(), state.pattern, #state.keys))
 end
 
 local function render_viewer(key, key_type, ttl, lines)
@@ -151,10 +145,7 @@ local function render_viewer(key, key_type, ttl, lines)
   local ttl_str = (ttl == "-1" or ttl == nil) and "no expiry" or (ttl .. "s")
   set_lines(state.viewer_buf, display)
   vim.bo[state.viewer_buf].modified = false
-  winbar(state.viewer_win, string.format(
-    " %s  │  %s  │  ttl: %s",
-    key, key_type, ttl_str
-  ))
+  winbar(state.viewer_win, string.format(" %s · %s · ttl: %s", key, key_type, ttl_str))
 end
 
 -- ── data loading ──────────────────────────────────────────────────────────────
