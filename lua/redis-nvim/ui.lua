@@ -157,12 +157,31 @@ local function load_keys()
   end
   if state.loading then return end
   state.loading = true
-
   spinner_start()
 
-  -- SCAN with a specific pattern may return 0 results per iteration even when
-  -- matches exist (Redis scans a fixed number of slots, not keys). Keep going
-  -- until we collect at least one new result or the cursor wraps back to 0.
+  -- For specific patterns use KEYS (one shot, all results).
+  -- For * use paginated SCAN so we don't block on huge keyspaces.
+  if state.pattern ~= "*" and state.pattern ~= "" then
+    redis.keys(state.conn, state.pattern, function(err, keys)
+      vim.schedule(function()
+        spinner_stop()
+        state.loading = false
+        if err then
+          vim.notify("[redis-nvim] " .. err, vim.log.levels.ERROR)
+          return
+        end
+        state.keys      = keys
+        state.seen_keys = {}
+        for _, k in ipairs(keys) do state.seen_keys[k] = true end
+        state.has_more  = false
+        state.cursor    = "0"
+        render_keys()
+      end)
+    end)
+    return
+  end
+
+  -- SCAN with * — paginated, keep going when a batch returns no keys.
   local function do_scan(cursor)
     redis.scan(state.conn, cursor, state.pattern, config.options.page_size,
       function(err, next_cursor, keys)
@@ -183,7 +202,6 @@ local function load_keys()
           state.has_more = next_cursor ~= "0"
 
           if #keys == 0 and state.has_more then
-            -- No matches yet but more slots to scan — continue without rendering
             do_scan(next_cursor)
           else
             state.loading = false

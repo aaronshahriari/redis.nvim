@@ -159,6 +159,10 @@ function M.set_value(conn, key, lines, key_type, cb)
   end
 end
 
+function M.keys(conn, pattern, cb)
+  M.run(conn, { "KEYS", pattern }, function(err, lines) cb(err, lines or {}) end)
+end
+
 function M.del(conn, key, cb)
   M.run(conn, { "DEL", key }, function(err) cb(err) end)
 end
